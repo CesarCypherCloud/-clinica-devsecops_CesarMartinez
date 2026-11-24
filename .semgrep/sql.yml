@@ -1,31 +1,23 @@
-name: DevSecOps
-on: [push, pull_request]
-
-jobs:
-  sast:
-    runs-on: ubuntu-latest
-    container:
-      image: semgrep/semgrep
-    steps:
-      - uses: actions/checkout@v4
-      - name: SAST con Semgrep
-        run: semgrep scan --config .semgrep/sql.yml --error
-
-  dependencias:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Resolver dependencias
-        run: npm install --package-lock-only
-      - name: Generar SBOM con Trivy
-        run: docker run --rm -v "$PWD:/src" aquasec/trivy:latest fs --format cyclonedx --output /src/sbom.json /src
-      - name: Guardar SBOM
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom
-          path: sbom.json
-      - name: Gate de dependencias
-        run: npm audit --audit-level=high
+rules:
+  - id: sql-injection-taint
+    mode: taint
+    languages: [javascript]
+    severity: ERROR
+    message: Posible inyección SQL detectada. Usa consultas parametrizadas en lugar de concatenar datos del usuario.
+    pattern-sources:
+      - pattern: req.params
+      - pattern: req.query
+      - pattern: req.body
+    pattern-sinks:
+      - patterns:
+          - pattern: $DB.query($QUERY, ...)
+          - focus-metavariable: $QUERY
+      - patterns:
+          - pattern: $DB.get($QUERY, ...)
+          - focus-metavariable: $QUERY
+      - patterns:
+          - pattern: $DB.all($QUERY, ...)
+          - focus-metavariable: $QUERY
+      - patterns:
+          - pattern: $DB.run($QUERY, ...)
+          - focus-metavariable: $QUERY
